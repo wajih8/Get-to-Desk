@@ -1,79 +1,88 @@
-# Remote Desktop Client
+# Remote Desktop Client Setup
 
-A C++20 and Qt 6 desktop prototype for attended pairing. The Host tab previews a selected monitor locally, creates expiring invitation codes, and gives the host explicit Allow view, Decline and End session controls. The Viewer tab requests access and shows the result and session details.
+Windows x64 guide for the C++ and Qt client. The same executable has **Host** and **Viewer** tabs. This prototype supports attended invitations and a host-only screen preview.
 
-The client speaks the v1 WebSocket messages in `PROTOCOL.md` as written. Both roles are in one executable, and each instance opens its own connection. The preview uses Qt screen snapshots on the host PC. WebRTC media and remote input are later milestones in the project plan.
+## 1. Install the build tools
 
-## 1. Install the Windows build tools
+Recheck these entries in Visual Studio Installer.
 
-1. In **Visual Studio Build Tools 2022**, install **Desktop development with C++**. Include **MSVC v143 x64/x86**, a **Windows SDK**, and **C++ CMake tools for Windows**. [Microsoft build tools components](https://learn.microsoft.com/en-us/visualstudio/install/workload-component-id-vs-build-tools?view=visualstudio)
-2. In the **Qt Online Installer** or **Qt Maintenance Tool**, select the **MSVC 2022 64-bit** kit and **Qt WebSockets** for the same Qt version. Use Qt 6.8 or later. The commands below use Qt 6.11.3 installed under `C:\Qt`. [Qt installer instructions](https://doc.qt.io/qt-6/qt-online-installation.html)
+| Where | Select |
+|---|---|
+| Workloads | **Desktop development with C++** |
+| Optional | **MSVC v143 – VS 2022 C++ x64/x86 build tools** |
+| Optional | **C++ CMake tools for Windows** |
+| Optional | **Windows 11 SDK (10.0.26100.9457)**, or the available 10.0.26100 SDK |
 
-## 2. Start the Python signaling server
+**C++ core desktop features** is included automatically. Other optional components are unnecessary for this project. [Microsoft Build Tools component list](https://learn.microsoft.com/en-us/visualstudio/install/workload-component-id-vs-build-tools?view=vs-2026)
 
-If you already set up `Remote_Desktop_Signaling.zip`, open PowerShell in the extracted server folder and run:
+In the **Qt Online Installer** or **Qt Maintenance Tool**, install **Qt 6.11.3 → MSVC 2022 64-bit** and **Qt WebSockets** for that Qt version. [Qt installation guide](https://doc.qt.io/qt-6/qt-online-installation.html)
 
-```powershell
-.\.venv\Scripts\python.exe .\server.py
-```
+## 2. Extract and build
 
-For a first-time setup, save the server ZIP to Downloads and run these commands with Python 3.12 available through `py`.
+Save the existing client ZIP in Downloads. Open **Developer PowerShell** for your installed Visual Studio version and run the following. If you already extracted the ZIP, skip the extraction line. Adjust the Qt path if needed.
 
-```powershell
-Set-Location "$env:USERPROFILE\Downloads"
-Expand-Archive -LiteralPath .\Remote_Desktop_Signaling.zip -DestinationPath .\Remote_Desktop_Signaling
-Set-Location .\Remote_Desktop_Signaling
-py -3.12 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r .\requirements.txt
-.\.venv\Scripts\python.exe .\server.py
-```
-
-Leave the server window open. Its default address is `ws://127.0.0.1:8765/ws`. Run both test clients on that Windows PC because the development server listens on loopback.
-
-## 3. Build and launch the client
-
-Save `Remote_Desktop_Client.zip` to Downloads. Open **Developer PowerShell for VS 2022** from the Start menu. Set `$qt` to your installed MSVC Qt kit folder if it differs from the example.
-
-```powershell
+~~~powershell
 Set-Location "$env:USERPROFILE\Downloads"
 Expand-Archive -LiteralPath .\Remote_Desktop_Client.zip -DestinationPath .\Remote_Desktop_Client
 Set-Location .\Remote_Desktop_Client
 $qt = 'C:\Qt\6.11.3\msvc2022_64'
 $env:Path = "$qt\bin;$env:Path"
-cmake -S . -B .\build -G "Visual Studio 17 2022" -A x64 "-DCMAKE_PREFIX_PATH=$qt"
-cmake --build .\build --config Release --parallel
-$app = (Resolve-Path .\build\Release\RemoteDesktopClient.exe).Path
+cmake --version
+~~~
+
+Run one configure command for your installed Visual Studio version. The Visual Studio 2026 generator requires CMake 4.2 or later. [CMake Visual Studio 2026 generator documentation](https://cmake.org/cmake/help/latest/generator/Visual%20Studio%2018%202026.html)
+
+**Visual Studio Build Tools 2026**
+
+~~~powershell
+cmake -S . -B .\build-vs2026 -G "Visual Studio 18 2026" -A x64 -T v143 "-DCMAKE_PREFIX_PATH=$qt"
+$build = '.\build-vs2026'
+~~~
+
+**Visual Studio Build Tools 2022**
+
+~~~powershell
+cmake -S . -B .\build-vs2022 -G "Visual Studio 17 2022" -A x64 "-DCMAKE_PREFIX_PATH=$qt"
+$build = '.\build-vs2022'
+~~~
+
+Once configuration succeeds, build and deploy the Qt runtime files. [Qt Windows deployment guide](https://doc.qt.io/qt-6/windows-deployment.html)
+
+~~~powershell
+cmake --build $build --config Release --parallel
+$app = (Resolve-Path (Join-Path $build 'Release\RemoteDesktopClient.exe')).Path
 & "$qt\bin\windeployqt.exe" --release "$app"
-Start-Process -FilePath $app
-Start-Process -FilePath $app
-```
+~~~
 
-`windeployqt` places the Qt runtime and plugins beside the release executable. Each window connects automatically when it opens. [Qt Windows deployment](https://doc.qt.io/qt-6/windows-deployment.html)
+## 3. Configure and launch the client
 
-## 4. Set your server URL
+Edit the config file beside the executable.
 
-After building, open the config beside the executable.
+~~~powershell
+notepad (Join-Path $build 'Release\config.json')
+~~~
 
-```powershell
-notepad .\build\Release\config.json
-```
+Set the full WebSocket endpoint, including its path. The default is for a service running on the same PC.
 
-Paste the full WebSocket endpoint into `server_url`, keeping the JSON quotes. Use `ws://` or `wss://` and include the server's WebSocket path.
-
-```json
+~~~json
 {
   "server_url": "ws://127.0.0.1:8765/ws"
 }
-```
+~~~
 
-Save the file. In each open client, click **Disconnect** if connected and then **Connect** to read the new URL. The same file can be edited next to the exe wherever you launch it. For a custom default on a fresh build, edit the source `config.json` before building.
+With the configured endpoint running, open two client windows. If you edit the URL while the clients are open, click **Disconnect** and then **Connect** in each window.
 
-## 5. Check the flow in two windows
+~~~powershell
+Start-Process -FilePath $app
+Start-Process -FilePath $app
+~~~
 
-1. In the first window's **Host** tab, select a display and click **Start preview**. Move a window on the selected monitor to check that the image updates. If the app is on that monitor, it also appears in the preview.
-2. Click **Create invitation** and **Copy code**. The preview stops and the code appears with a countdown.
-3. In the second window, open **Viewer**, enter a name, paste the code and click **Request access**. The viewer shows that approval is pending. The host shows the requesting name, the viewer's connection ID and the selected display.
-4. In Host, click **Allow view**. Both windows show the same session ID. Click **End session** in either window and check that both return to idle.
-5. Create a new invitation and repeat with **Decline**. Create another with **15 seconds** and leave it pending until it expires. Both windows return to idle and the viewer can ask for a fresh code.
+## 4. Test the two client windows
 
-To withdraw an open invitation or a pending request, click **Disconnect**. The server invalidates the invitation or closes the request as part of that protocol flow. A fresh connection is available from **Connect**.
+1. In **Host**, select a display and click **Start preview** to check the local image.
+2. Click **Create invitation**, then **Copy code**.
+3. In the second window, open **Viewer**, enter a name, paste the code, and click **Request access**.
+4. In **Host**, click **Allow view**. Confirm that both windows show the same session ID, then click **End session** in either window.
+5. Use fresh codes to test **Decline** and invitation expiry.
+
+The Viewer displays session status and permissions. Screen streaming and remote input are outside this prototype.
